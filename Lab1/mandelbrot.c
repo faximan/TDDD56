@@ -33,6 +33,14 @@ struct mandelbrot_timing timing;
 #endif
 };
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#if LOADBALANCE == 1
+int pixel_count;
+#endif
+#if LOADBALANCE == 2
+int row_count;
+#endif
+
 int thread_stop;
 pthread_barrier_t thread_pool_barrier;
 
@@ -127,6 +135,35 @@ init_round(struct mandelbrot_thread *args)
 	// Initialize or reinitialize here variables before any thread starts or restarts computation
 }
 
+#if LOADBALANCE == 1
+int get_my_pixel(struct mandelbrot_param *parameters, int *x, int *y) {
+	int pixel;
+	pthread_mutex_lock(&mutex);
+  pixel = pixel_count;
+  ++pixel_count;
+  pthread_mutex_unlock(&mutex);
+
+  *x = pixel % parameters->width;
+  *y = pixel / parameters->width;
+
+  return pixel < parameters->width * parameters->height;
+}
+#endif
+
+#if LOADBALANCE == 2
+int get_my_row(struct mandelbrot_param *parameters, int *row_out) {
+	int row;
+	pthread_mutex_lock(&mutex);
+  row = row_count;
+  ++row_count;
+  pthread_mutex_unlock(&mutex);
+
+  *row_out = row;
+
+  return row < parameters->height;
+}
+#endif
+
 /*
  * Each thread starts individually this function, where args->id give the thread's id from 0 to NB_THREADS
  */
@@ -135,12 +172,50 @@ parallel_mandelbrot(struct mandelbrot_thread *args, struct mandelbrot_param *par
 {
 #if LOADBALANCE == 0
 	// naive *parallel* implementation. Compiled only if LOADBALANCE = 0
+	parameters->begin_h = (parameters->height / NB_THREADS) * args->id;
+
+	if (args->id == NB_THREADS - 1) {
+		parameters->end_h = parameters->height;
+	} else {
+		parameters->end_h = (parameters->height / NB_THREADS) * (args->id + 1);
+	}
+	parameters->begin_w = 0;
+	parameters->end_w = parameters->width;
+
+	printf("H[%d], W[%d]\n", parameters->height, parameters->width);
+	printf("Running load-balance 0 with threadid [%d], computing chunk x: [%d] -> [%d], y: [%d] -> [%d]\n",
+		args->id, parameters->begin_w, parameters->end_w, parameters->begin_h, parameters->end_h);
+
+	compute_chunk(parameters);
 #endif
 #if LOADBALANCE == 1
 	// Your load-balanced smarter solution. Compiled only if LOADBALANCE = 1
+	int x, y;
+
+	while (get_my_pixel(parameters, &x, &y)){
+		parameters->begin_h = y;
+		parameters->end_h = y + 1;
+
+		parameters->begin_w = x;
+		parameters->end_w = x + 1;
+
+		compute_chunk(parameters);
+	}
+
+
 #endif
 #if LOADBALANCE == 2
 	// A second *optional* load-balancing solution. Compiled only if LOADBALANCE = 2
+	int row;
+	while (get_my_row(parameters, &row)) {
+		parameters->begin_h = row;
+		parameters->end_h = row + 1;
+
+		parameters->begin_w = 0;
+		parameters->end_w = parameters->width;
+
+		compute_chunk(parameters);
+	}
 #endif
 }
 /***** end *****/
@@ -202,7 +277,7 @@ run_thread(void * buffer)
 
 		// Wait for the next work signal
 		pthread_barrier_wait(&thread_pool_barrier);
-	
+
 		// Fetch the latest parameters
 		param = mandelbrot_param;
 	}
@@ -334,6 +409,17 @@ compute_mandelbrot(struct mandelbrot_param param)
 {
 #if NB_THREADS > 0
 	mandelbrot_param = param;
+
+#if LOADBALANCE == 1
+	pthread_mutex_lock(&mutex);
+  pixel_count = 0;
+  pthread_mutex_unlock(&mutex);
+#endif
+#if LOADBALANCE == 2
+	pthread_mutex_lock(&mutex);
+  row_count = 0;
+  pthread_mutex_unlock(&mutex);
+#endif
 
 	// Trigger threads' resume
 	pthread_barrier_wait(&thread_pool_barrier);
