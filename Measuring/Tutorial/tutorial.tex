@@ -1,0 +1,62 @@
+\documentclass{article}
+\usepackage{a4}
+\usepackage{pslatex}
+\usepackage{heqn}
+\usepackage{html}
+\usepackage{htmllist}
+\usepackage{epsf}
+\usepackage{colordvi}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{listings}
+
+\usepackage{times}
+\usepackage[utf8x]{inputenc}
+\usepackage{t1enc}
+\usepackage[czech,english]{babel}
+
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage[retainorgcmds]{IEEEtrantools}
+\usepackage{multirow}
+\usepackage{slashbox}
+\usepackage{pict2e}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{subfigure}
+\usepackage[numbers,sort]{natbib}
+\usepackage{multicol}
+
+\lstset{language=C}
+
+\newcounter{description} 
+\renewcommand{\descriptionlabel}[1]{
+\refstepcounter{description}
+\hspace\labelsep 
+\normalfont\bfseries \thedescription. #1} 
+
+\bibliographystyle{plainnat}
+\AtBeginDocument{\renewcommand\bibname{References}}
+
+\usepackage{lipsum}% just to automatically generate text
+\usepackage{blindtext}
+
+\begin{document}
+
+\title{Measuring and visualizing performance\\}
+\author{Nicolas Melot \\
+%Programming environments laboratory, Linköping university, Sweden\\
+\texttt{nicolas.melot@liu.se}
+}
+\date{\today}
+
+\maketitle
+
+\input{content}
+
+\cleardoublepage
+\addcontentsline{toc}{chapter}{References}
+\bibliography{bibliography}
+
+\end{document}
+
