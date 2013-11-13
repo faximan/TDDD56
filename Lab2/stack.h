@@ -27,17 +27,29 @@
 #ifndef STACK_H
 #define STACK_H
 
+struct element {
+  int value;
+  struct element* next;
+};
+typedef struct element element_t;
+
 struct stack
 {
-  // This is a fake structure; change it to your needs
-  int change_this_member;
+  element_t* head;
+#if NON_BLOCKING == 0
+  pthread_mutex_t lock;
+#endif
 };
-
 typedef struct stack stack_t;
 
+// Allocates a stack.
+stack_t * stack_alloc();
+// Inits a stack. Should be run before using a stack.
+// Returns 0 on success.
+int stack_init(stack_t *);
 // Pushes an element in a thread-safe manner
-int stack_push_safe(stack_t *, void*);
+int stack_push_safe(stack_t *, int);
 // Pops an element in a thread-safe manner
-int stack_pop_safe(stack_t *, void*);
+int stack_pop_safe(stack_t *, int*);
 
 #endif /* STACK_H */

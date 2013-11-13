@@ -48,8 +48,6 @@
 stack_t *
 stack_alloc()
 {
-  // Example of a task allocation with correctness control
-  // Feel free to change it
   stack_t *res;
 
   res = malloc(sizeof(stack_t));
@@ -58,10 +56,7 @@ stack_alloc()
   if (res == NULL)
     return NULL;
 
-// You may allocate a lock-based or CAS based stack in
-// different manners if you need so
 #if NON_BLOCKING == 0
-  // Implement a lock_based stack
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack
@@ -73,12 +68,15 @@ stack_alloc()
 }
 
 int
-stack_init(stack_t *stack, size_t size)
+stack_init(stack_t *stack)
 {
   assert(stack != NULL);
-  assert(size > 0);
+  stack->head = NULL;
 
 #if NON_BLOCKING == 0
+  pthread_mutexattr_t mutex_attr;
+  pthread_mutexattr_init(&mutex_attr);
+  pthread_mutex_init(&stack->lock, &mutex_attr);
   // Implement a lock_based stack
 #elif NON_BLOCKING == 1
   /*** Optional ***/
@@ -107,10 +105,23 @@ stack_check(stack_t *stack)
 }
 
 int
-stack_push(stack_t *stack, void* buffer)
+stack_push_safe(stack_t *stack, int buffer)
 {
 #if NON_BLOCKING == 0
-  // Implement a lock_based stack
+  assert(stack != NULL);
+  element_t* new_element = malloc(sizeof(element_t));
+  if (new_element == NULL) {
+    return 1;  // Error.
+  }
+
+  new_element->value = buffer;
+
+  // Critical section, change head of stack.
+  pthread_mutex_lock(&stack->lock);
+  new_element->next = stack->head;
+  stack->head = new_element;
+  pthread_mutex_unlock(&stack->lock);
+
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack
@@ -122,10 +133,20 @@ stack_push(stack_t *stack, void* buffer)
 }
 
 int
-stack_pop(stack_t *stack, void* buffer)
+stack_pop_safe(stack_t *stack, int* buffer)
 {
 #if NON_BLOCKING == 0
-  // Implement a lock_based stack
+  pthread_mutex_lock(&stack->lock);
+  assert(stack != NULL);
+  element_t* old_head = stack->head;
+  assert(old_head != NULL);
+  stack->head = old_head->next;
+  pthread_mutex_unlock(&stack->lock);
+
+  *buffer = old_head->value;
+  free(old_head);
+  old_head = NULL;  // Best practise.
+
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack

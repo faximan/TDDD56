@@ -6,4 +6,6 @@ data-test-*
 mandelbrot.ppm
 log
 Measuring/program/*
-
+stack-*
+*.m
+*.eps

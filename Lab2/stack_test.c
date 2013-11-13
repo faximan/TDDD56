@@ -21,9 +21,9 @@
  * 
  */
 
-#ifndef DEBUG
-#define NDEBUG
-#endif
+/* #ifndef DEBUG */
+/* #define NDEBUG */
+/* #endif */
 
 #include <stdio.h>
 #include <assert.h>
@@ -52,13 +52,12 @@ typedef int data_t;
 #define DATA_SIZE sizeof(data_t)
 #define DATA_VALUE 5
 
-stack_t *stack;
+stack_t *stack = NULL;
 data_t data;
 
 void
 test_init()
 {
-  // Initialize your test batch
 }
 
 void
@@ -66,36 +65,54 @@ test_setup()
 {
   // Allocate and initialize your test stack before each test
   data = DATA_VALUE;
+  assert(stack == NULL);
+  stack = stack_alloc();
 }
 
 void
 test_teardown()
 {
-  // Do not forget to free your stacks after each test
-  // to avoid memory leaks as now
+  // Empty stack.
+  while (stack->head != NULL) {
+    int temp;
+    stack_pop_safe(stack, &temp);
+  }
+  free(stack);
+  stack = NULL;
 }
 
 void
 test_finalize()
 {
-  // Destroy properly your test batch
 }
 
 int
 test_push_safe()
 {
-  // Make sure your stack remains in a good state with expected content when
-  // several threads push concurrently to it
+  assert(stack != NULL);
+  assert(stack->head == NULL);
 
-  return 0;
+  assert(stack_push_safe(stack, 5) == 0);
+  int pushed = 0;
+  assert(stack_pop_safe(stack, &pushed) == 0);
+  assert(pushed == 5);
+
+  return 1;
 }
 
-int
-test_pop_safe()
-{
-  // Same as the test above for parallel pop operation
+void test_many_push() {
+  int i = 0;  
+  for (; i < MAX_PUSH_POP / NB_THREADS; i++) {
+    stack_push_safe(stack, DATA_VALUE);
+  }
+}
 
-  return 0;
+void test_many_pop() {
+  int element;
+  int i = 0;
+  for (; i < MAX_PUSH_POP / NB_THREADS; i++) {
+    stack_pop_safe(stack, &element);
+  }
 }
 
 // 3 Threads should be enough to raise and detect the ABA problem
@@ -209,6 +226,24 @@ typedef struct stack_measure_arg stack_measure_arg_t;
 struct timespec t_start[NB_THREADS], t_stop[NB_THREADS], start, stop;
 #endif
 
+void*
+test_push_pop(void *args) {
+  stack_measure_arg_t *arg = (stack_measure_arg_t*) args;
+
+#if MEASURE == 1
+  clock_gettime(CLOCK_MONOTONIC, &t_start[arg->id]);
+#endif
+  test_many_push();
+
+#if MEASURE == 2
+  clock_gettime(CLOCK_MONOTONIC, &t_start[arg->id]);
+  test_many_pop();
+#endif
+
+  clock_gettime(CLOCK_MONOTONIC, &t_stop[arg->id]);
+  return NULL;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -220,7 +255,6 @@ setbuf(stdout, NULL);
   test_run(test_cas);
 
   test_run(test_push_safe);
-  test_run(test_pop_safe);
   test_run(test_aba);
 
   test_finalize();
@@ -228,25 +262,23 @@ setbuf(stdout, NULL);
   // Run performance tests
   int i;
   stack_measure_arg_t arg[NB_THREADS];  
+  pthread_attr_t attr;
+  pthread_t threads[NB_THREADS];
+
+  pthread_attr_init(&attr);
 
   test_setup();
-
   clock_gettime(CLOCK_MONOTONIC, &start);
+
   for (i = 0; i < NB_THREADS; i++)
     {
       arg[i].id = i;
-      (void)arg[i].id; // Makes the compiler to shut up about unused variable arg
-      // Run push-based performance test based on MEASURE token
-#if MEASURE == 1
-      clock_gettime(CLOCK_MONOTONIC, &t_start[i]);
-      // Push MAX_PUSH_POP times in parallel
-      clock_gettime(CLOCK_MONOTONIC, &t_stop[i]);
-#else
-      // Run pop-based performance test based on MEASURE token
-      clock_gettime(CLOCK_MONOTONIC, &t_start[i]);
-      // Pop MAX_PUSH_POP times in parallel
-      clock_gettime(CLOCK_MONOTONIC, &t_stop[i]);
-#endif
+      pthread_create(&threads[i], &attr, &test_push_pop, (void*) &arg[i]);
+    }
+
+  for (i = 0; i < NB_THREADS; i++)
+    {
+      pthread_join(threads[i], NULL);
     }
 
   // Wait for all threads to finish
