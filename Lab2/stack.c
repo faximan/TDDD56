@@ -40,7 +40,7 @@
 #else
 #if NON_BLOCKING == 1 
 #warning Stacks are synchronized through lock-based CAS
-#else
+#else // NON_BLOCKING == 2
 #warning Stacks are synchronized through hardware CAS
 #endif
 #endif
@@ -53,15 +53,16 @@ stack_alloc()
   res = malloc(sizeof(stack_t));
   assert(res != NULL);
 
-  if (res == NULL)
+  if (res == NULL) {
     return NULL;
+  }
 
 #if NON_BLOCKING == 0
 #elif NON_BLOCKING == 1
   /*** Optional ***/
-  // Implement a harware CAS-based stack
+  // Implement a software CAS-based stack
 #else
-  // Implement a harware CAS-based stack
+  // Implement a hardware CAS-based stack
 #endif
 
   return res;
@@ -105,17 +106,16 @@ stack_check(stack_t *stack)
 }
 
 int
-stack_push_safe(stack_t *stack, int buffer)
+stack_push_safe(stack_t *stack, element_t* new_element)
 {
-#if NON_BLOCKING == 0
   assert(stack != NULL);
-  element_t* new_element = malloc(sizeof(element_t));
-  if (new_element == NULL) {
-    return 1;  // Error.
-  }
-
-  new_element->value = buffer;
-
+  //element_t* new_element = malloc(sizeof(element_t));
+  //if (new_element == NULL) {
+  //  return 1;  // Error.
+  //}
+  //new_element->value = buffer;
+  
+#if NON_BLOCKING == 0
   // Critical section, change head of stack.
   pthread_mutex_lock(&stack->lock);
   new_element->next = stack->head;
@@ -125,35 +125,43 @@ stack_push_safe(stack_t *stack, int buffer)
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack
-#else
-  // Implement a harware CAS-based stack
-#endif
 
+#else  // NON_BLOCKING == 2
+  element_t* old_element = NULL;
+  do {
+    old_element = stack->head;
+    new_element->next = old_element;
+  } while (cas((size_t *)&stack->head,
+	       (size_t)old_element,
+	       (size_t)new_element) != (size_t)old_element);
+#endif
   return 0;
 }
 
 int
-stack_pop_safe(stack_t *stack, int* buffer)
+stack_pop_safe(stack_t *stack, element_t **old_head)
 {
 #if NON_BLOCKING == 0
   pthread_mutex_lock(&stack->lock);
   assert(stack != NULL);
-  element_t* old_head = stack->head;
-  assert(old_head != NULL);
-  stack->head = old_head->next;
+  *old_head = stack->head;
+  assert(*old_head != NULL);
+  stack->head = (*old_head)->next;
   pthread_mutex_unlock(&stack->lock);
-
-  *buffer = old_head->value;
-  free(old_head);
-  old_head = NULL;  // Best practise.
-
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack
-#else
-  // Implement a harware CAS-based stack
-#endif
 
-  return 0;
+#else  // NON_BLOCKING == 2
+  element_t* new_head = NULL;
+  do {
+    new_head = stack->head->next;
+    *old_head = stack->head;
+
+  } while (cas((size_t *)&stack->head,
+	       (size_t)*old_head,
+	       (size_t)new_head) != (size_t)*old_head);
+#endif
+    return 0;
 }
 

@@ -27,20 +27,18 @@
 #ifndef STACK_H
 #define STACK_H
 
-struct element {
+typedef struct element {
   int value;
   struct element* next;
-};
-typedef struct element element_t;
+} element_t;
 
-struct stack
+typedef struct
 {
   element_t* head;
 #if NON_BLOCKING == 0
   pthread_mutex_t lock;
 #endif
-};
-typedef struct stack stack_t;
+} stack_t;
 
 // Allocates a stack.
 stack_t * stack_alloc();
@@ -48,8 +46,8 @@ stack_t * stack_alloc();
 // Returns 0 on success.
 int stack_init(stack_t *);
 // Pushes an element in a thread-safe manner
-int stack_push_safe(stack_t *, int);
+int stack_push_safe(stack_t *, element_t *);
 // Pops an element in a thread-safe manner
-int stack_pop_safe(stack_t *, int*);
+int stack_pop_safe(stack_t *, element_t **);
 
 #endif /* STACK_H */

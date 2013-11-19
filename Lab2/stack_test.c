@@ -55,6 +55,23 @@ typedef int data_t;
 stack_t *stack = NULL;
 data_t data;
 
+int do_push(int value) {
+  element_t* elem = (element_t*)malloc(sizeof(element_t));
+  elem->value = value;
+  return stack_push_safe(stack, elem);
+}
+
+int do_pop(int* value) {
+  element_t* elem = NULL;
+  int status = stack_pop_safe(stack, &elem);
+  if (status != 0) {
+    return status;
+  }
+  *value = elem->value;
+  free(elem);
+  return 0;
+}
+
 void
 test_init()
 {
@@ -67,6 +84,7 @@ test_setup()
   data = DATA_VALUE;
   assert(stack == NULL);
   stack = stack_alloc();
+  assert(stack_init(stack) == 0);
 }
 
 void
@@ -75,7 +93,7 @@ test_teardown()
   // Empty stack.
   while (stack->head != NULL) {
     int temp;
-    stack_pop_safe(stack, &temp);
+    do_pop(&temp);
   }
   free(stack);
   stack = NULL;
@@ -92,9 +110,9 @@ test_push_safe()
   assert(stack != NULL);
   assert(stack->head == NULL);
 
-  assert(stack_push_safe(stack, 5) == 0);
+  assert(do_push(5) == 0);
   int pushed = 0;
-  assert(stack_pop_safe(stack, &pushed) == 0);
+  assert(do_pop(&pushed) == 0);
   assert(pushed == 5);
 
   return 1;
@@ -103,15 +121,17 @@ test_push_safe()
 void test_many_push() {
   int i = 0;  
   for (; i < MAX_PUSH_POP / NB_THREADS; i++) {
-    stack_push_safe(stack, DATA_VALUE);
+    do_push(DATA_VALUE);
   }
 }
+
+
 
 void test_many_pop() {
   int element;
   int i = 0;
   for (; i < MAX_PUSH_POP / NB_THREADS; i++) {
-    stack_pop_safe(stack, &element);
+    do_pop(&element);
   }
 }
 
@@ -224,7 +244,6 @@ struct stack_measure_arg
 typedef struct stack_measure_arg stack_measure_arg_t;
 
 struct timespec t_start[NB_THREADS], t_stop[NB_THREADS], start, stop;
-#endif
 
 void*
 test_push_pop(void *args) {
@@ -243,6 +262,8 @@ test_push_pop(void *args) {
   clock_gettime(CLOCK_MONOTONIC, &t_stop[arg->id]);
   return NULL;
 }
+
+#endif
 
 int
 main(int argc, char **argv)
