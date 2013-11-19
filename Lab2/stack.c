@@ -57,14 +57,6 @@ stack_alloc()
     return NULL;
   }
 
-#if NON_BLOCKING == 0
-#elif NON_BLOCKING == 1
-  /*** Optional ***/
-  // Implement a software CAS-based stack
-#else
-  // Implement a hardware CAS-based stack
-#endif
-
   return res;
 }
 
@@ -78,14 +70,7 @@ stack_init(stack_t *stack)
   pthread_mutexattr_t mutex_attr;
   pthread_mutexattr_init(&mutex_attr);
   pthread_mutex_init(&stack->lock, &mutex_attr);
-  // Implement a lock_based stack
-#elif NON_BLOCKING == 1
-  /*** Optional ***/
-  // Implement a harware CAS-based stack
-#else
-  // Implement a harware CAS-based stack
 #endif
-
   return 0;
 }
 
@@ -109,11 +94,6 @@ int
 stack_push_safe(stack_t *stack, element_t* new_element)
 {
   assert(stack != NULL);
-  //element_t* new_element = malloc(sizeof(element_t));
-  //if (new_element == NULL) {
-  //  return 1;  // Error.
-  //}
-  //new_element->value = buffer;
   
 #if NON_BLOCKING == 0
   // Critical section, change head of stack.

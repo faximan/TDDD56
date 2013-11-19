@@ -91,10 +91,10 @@ void
 test_teardown()
 {
   // Empty stack.
-  while (stack->head != NULL) {
-    int temp;
-    do_pop(&temp);
-  }
+  /* while (stack->head != NULL) { */
+  /*   int temp; */
+  /*   do_pop(&temp); */
+  /* } */
   free(stack);
   stack = NULL;
 }
@@ -125,8 +125,6 @@ void test_many_push() {
   }
 }
 
-
-
 void test_many_pop() {
   int element;
   int i = 0;
@@ -135,16 +133,93 @@ void test_many_pop() {
   }
 }
 
-// 3 Threads should be enough to raise and detect the ABA problem
-#define ABA_NB_THREADS 3
+
+/** Simulates the ABA problem **/
+#if NON_BLOCKING != 0
+
+static int sem;
+static element_t A, B, C;
+
+// Used together with test_aba. Blocks before CAS if block_before_cas == 1.
+int
+test_aba_pop(stack_t *stack, element_t **old_head, int block_before_cas) {
+  element_t *new_head = stack->head->next;
+  *old_head = stack->head;
+
+  if (block_before_cas == 1) {
+    sem--;
+    while (sem == 0); // Blocks until thread1 calls sem_post.
+  }
+
+  assert( cas((size_t *)&stack->head,
+	      (size_t)*old_head,
+	      (size_t)new_head) == (size_t)*old_head);
+  return 0;
+}
+
+// Pop A but get preempted before suceeding.
+void* test_aba_thread0(void* null) {
+  element_t *a;
+  assert(test_aba_pop(stack, &a, 1) == 0);
+  return NULL;
+}
+
+// {Pop A, Pop B, Push A} after thread0 is asleep.
+void* test_aba_thread1(void* null) {
+  // Wait until thread0 is asleep.
+  while (sem == 1);
+
+  element_t *a, *b;
+  assert(test_aba_pop(stack, &a, 0) == 0);
+  assert(test_aba_pop(stack, &b, 0) == 0);
+  assert(stack_push_safe(stack, a) == 0);
+
+  // Let thread0 continue executing.
+  sem = 1;
+  //sem_post(&sem);
+  return NULL;
+}
+
+void
+run_aba_test_threads() {
+  //sem_init(&sem, 0, 0);
+  sem = 1;
+
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  pthread_t thread0, thread1;
+  pthread_create(&thread0, &attr, &test_aba_thread0, NULL);
+  pthread_create(&thread1, &attr, &test_aba_thread1, NULL);
+  pthread_join(thread0, NULL);
+  pthread_join(thread1, NULL);
+}
+
+#endif
+/** End simulation **/
 
 int
 test_aba()
 {
-  int success, aba_detected = 0;
-  // Write here a test for the ABA problem
-  success = aba_detected;
-  return success;
+  int aba_detected = 0;
+
+#if NON_BLOCKING != 0  // ABA cannot happen for lock based synchronization.
+  stack_push_safe(stack, &C);
+  stack_push_safe(stack, &B);
+  stack_push_safe(stack, &A);
+  // The stack is now head -> A -> B -> C.
+
+  run_aba_test_threads();
+
+  // If no ABA happened, stack->head should point to A here.
+  aba_detected = (stack->head != &A) ? 1 : 0;
+
+  // if ABA happened,stack->head points to B!
+  if (aba_detected == 1)
+    assert(stack->head == &B);
+#endif
+
+  return aba_detected ? 0 : 1;  // Succeed if no ABA detected.
 }
 
 // We test here the CAS function
