@@ -56,13 +56,13 @@ stack_t *stack = NULL;
 data_t data;
 
 int do_push(int value) {
-  element_t* elem = (element_t*)malloc(sizeof(element_t));
+  element_t *elem = (element_t*)malloc(sizeof(element_t));
   elem->value = value;
   return stack_push_safe(stack, elem);
 }
 
 int do_pop(int* value) {
-  element_t* elem = NULL;
+  element_t *elem = NULL;
   int status = stack_pop_safe(stack, &elem);
   if (status != 0) {
     return status;
@@ -84,7 +84,7 @@ test_setup()
   data = DATA_VALUE;
   assert(stack == NULL);
   stack = stack_alloc();
-  assert(stack_init(stack) == 0);
+  stack_init(stack);
 }
 
 void
@@ -95,7 +95,7 @@ test_teardown()
   /*   int temp; */
   /*   do_pop(&temp); */
   /* } */
-  free(stack);
+  //free(stack);
   stack = NULL;
 }
 
@@ -110,10 +110,10 @@ test_push_safe()
   assert(stack != NULL);
   assert(stack->head == NULL);
 
-  assert(do_push(5) == 0);
+  assert(do_push(7) == 0);
   int pushed = 0;
   assert(do_pop(&pushed) == 0);
-  assert(pushed == 5);
+  assert(pushed == 7);
 
   return 1;
 }
@@ -126,9 +126,9 @@ void test_many_push() {
 }
 
 void test_many_pop() {
-  int element;
   int i = 0;
   for (; i < MAX_PUSH_POP / NB_THREADS; i++) {
+    int element;
     do_pop(&element);
   }
 }
@@ -148,7 +148,7 @@ test_aba_pop(stack_t *stack, element_t **old_head, int block_before_cas) {
 
   if (block_before_cas == 1) {
     sem--;
-    while (sem == 0); // Blocks until thread1 calls sem_post.
+    while (sem == 0); // Blocks until thread1 increments semaphore.
   }
 
   assert( cas((size_t *)&stack->head,
@@ -176,13 +176,11 @@ void* test_aba_thread1(void* null) {
 
   // Let thread0 continue executing.
   sem = 1;
-  //sem_post(&sem);
   return NULL;
 }
 
 void
 run_aba_test_threads() {
-  //sem_init(&sem, 0, 0);
   sem = 1;
 
   pthread_attr_t attr;
@@ -322,12 +320,13 @@ struct timespec t_start[NB_THREADS], t_stop[NB_THREADS], start, stop;
 
 void*
 test_push_pop(void *args) {
+#if NON_BLOCKING != 1
   stack_measure_arg_t *arg = (stack_measure_arg_t*) args;
 
 #if MEASURE == 1
   clock_gettime(CLOCK_MONOTONIC, &t_start[arg->id]);
-#endif
   test_many_push();
+#endif
 
 #if MEASURE == 2
   clock_gettime(CLOCK_MONOTONIC, &t_start[arg->id]);
@@ -335,6 +334,7 @@ test_push_pop(void *args) {
 #endif
 
   clock_gettime(CLOCK_MONOTONIC, &t_stop[arg->id]);
+#endif
   return NULL;
 }
 
@@ -366,9 +366,17 @@ setbuf(stdout, NULL);
   test_setup();
   clock_gettime(CLOCK_MONOTONIC, &start);
 
+#if MEASURE == 2
+  int j;
+  for (j = 0; j < MAX_PUSH_POP; ++j) {
+    do_push(8);
+   }
+#endif
+
   for (i = 0; i < NB_THREADS; i++)
     {
       arg[i].id = i;
+
       pthread_create(&threads[i], &attr, &test_push_pop, (void*) &arg[i]);
     }
 

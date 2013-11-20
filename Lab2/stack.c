@@ -119,28 +119,28 @@ stack_push_safe(stack_t *stack, element_t* new_element)
 }
 
 int
-stack_pop_safe(stack_t *stack, element_t **old_head)
+stack_pop_safe(stack_t *stack, element_t **popped_element)
 {
 #if NON_BLOCKING == 0
   pthread_mutex_lock(&stack->lock);
   assert(stack != NULL);
-  *old_head = stack->head;
-  assert(*old_head != NULL);
-  stack->head = (*old_head)->next;
+  *popped_element = stack->head;
+  assert(*popped_element != NULL);
+  stack->head = (*popped_element)->next;
   pthread_mutex_unlock(&stack->lock);
 #elif NON_BLOCKING == 1
   /*** Optional ***/
   // Implement a harware CAS-based stack
 
 #else  // NON_BLOCKING == 2
-  element_t* new_head = NULL;
-  do {
-    new_head = stack->head->next;
-    *old_head = stack->head;
+  element_t* old_head = NULL;
 
+  do {
+    old_head = stack->head;
   } while (cas((size_t *)&stack->head,
-	       (size_t)*old_head,
-	       (size_t)new_head) != (size_t)*old_head);
+	       (size_t)old_head,
+	       (size_t)old_head->next) != (size_t)old_head);
+  *popped_element = old_head;
 #endif
     return 0;
 }
