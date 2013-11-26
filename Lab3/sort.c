@@ -85,7 +85,9 @@ seq_partition(struct array* array, const int from, const int to) {
   int left = from;
   int i;
   for (i = from; i < last; ++i) {
-    if (array->data[i] <= pivot) {
+    if ( (i%2) ?
+	 array->data[i] <= pivot :
+	 array->data[i] < pivot) {
       array_swap(array, i, left++);
     }
   }
