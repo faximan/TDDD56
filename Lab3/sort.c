@@ -39,6 +39,8 @@
 
 pthread_attr_t attr;
 
+int* b;
+
 void
 array_swap(struct array* array, const int ai, const int bi) {
   const int c = array->data[ai];
@@ -50,44 +52,60 @@ array_swap(struct array* array, const int ai, const int bi) {
 int
 get_pivot_index(struct array* array, const int lower, const int upper) {
   const int middle = (lower + upper) / 2;
-
+  //  return middle;
   const int A = array->data[lower];
   const int B = array->data[middle];
   const int C = array->data[upper];
   
-  if (A > B) {
-    if (B > C) {
-      return middle;
-    } else if (A > C) {
-      return upper;
-    } else {
+  if (A <= B) {
+    if (C < A) {
       return lower;
+    } else if (C > B) {
+      return middle;
+    } else {
+      return upper;
     }
   } else {
-    if (A > C) {
-      return lower;
-    } else if (B > C) {
-      return upper;
-    } else {
+    if (C < B) {
       return middle;
+    } else if (C > A) {
+      return lower;
+    } else {
+      return upper;
     }
+  }
+}
+
+void
+seq_selection_sort(struct array* array, const int from, const int to) {
+  int i, j;
+  for (i = from; i < to; i++) {
+    int min_idx = i;
+    int min_nbr = array->data[i];
+    for (j = i + 1; j < to; j++) {
+      if (array->data[j] < min_nbr) {
+	min_nbr = array->data[j];
+	min_idx = j;
+      }
+    }
+    array_swap(array, i, min_idx);
   }
 }
 
 // In place partitions array and returns the position of the pivot.
 int
 seq_partition(struct array* array, const int from, const int to) {
-  const int pivot_index = get_pivot_index(array, from, to);
-  const int pivot = array->data[pivot_index];
   const int last = to - 1; // Index of last element.
+  const int pivot_index = get_pivot_index(array, from, last);
+  const int pivot = array->data[pivot_index];
   array_swap(array, pivot_index, last);
 
   int left = from;
   int i;
   for (i = from; i < last; ++i) {
     if ( (i%2) ?
-	 array->data[i] <= pivot :
-	 array->data[i] < pivot) {
+	 array->data[i] < pivot :
+	 array->data[i] <= pivot) {
       array_swap(array, i, left++);
     }
   }
@@ -103,37 +121,101 @@ typedef struct {
   int threads;
 } quicksort_args;
 
-void
-seq_selection_sort(struct array* array, int from, int to) {
-  int i, j;
-  for (i = from; i < to-1; i++) {
-    int min_idx = i;
-    int min_nbr = array->data[i];
-    for (j = i + 1; j < to; j++) {
-      if (array->data[j] < min_nbr) {
-	min_nbr = array->data[j];
-	min_idx = j;
-      }
-    }
-    array_swap(array, i, min_idx);
-  }
-}
-
-void
-seq_quicksort(struct array* array, int from, int to) {
-  if (to - from <= 10) {
-    seq_selection_sort(array, from, to);
-  } else {
-    const int mid = seq_partition(array, from, to);
-    seq_quicksort(array, from, mid);
-    seq_quicksort(array, mid + 1, to);
-  }
-}
-
 void* quicksort(void* vargs);
 
 void
+seq_quicksort(struct array* array, const int from, const int to) {
+  const int mid = seq_partition(array, from, to);
+  quicksort_args args[2];
+
+  args[0].array = array;
+  args[0].threads = 1;
+  args[0].from = from;
+  args[0].to = mid;
+  quicksort((void*)&args[0]);
+
+  args[1].array = array;
+  args[1].threads = 1;
+  args[1].from = mid + 1;
+  args[1].to = to;
+  quicksort((void*)&args[1]);
+}
+
+inline int
+fetch_and_add(int* variable, int value) {
+  asm volatile( 
+	       "lock; xaddl %%eax, %2;"
+	       :"=a" (value)                   //Output
+	       : "a" (value), "m" (*variable)  //Input
+	       :"memory" );
+  return value;
+}
+
+typedef struct {
+  struct array* array;
+  int from;
+  int to;
+  int pivot;
+
+  int *left, *right;
+} par_partition_args;
+
+
+void*
+par_partition_work(void* vargs) {
+  par_partition_args* args = (par_partition_args*)vargs;
+
+  int i, cur;
+  for (i = args->from; i < args->to; i++) {
+    cur = args->array->data[i];
+    if ( (i%2) ? cur <= args->pivot : cur < args->pivot) {
+      b[fetch_and_add(args->left, 1)] = cur;    
+    } else {
+      b[fetch_and_add(args->right, -1)] = cur;
+    }
+  }
+  return args->left;
+}
+
+int
+par_partition(struct array* array, int from, int to, int num_threads) {
+  const int last = to - 1;
+  const int pivot_index = get_pivot_index(array, from, last);
+  const int pivot = array->data[pivot_index];
+  array_swap(array, pivot_index, last);
+
+  pthread_t threads[num_threads];
+  par_partition_args args[num_threads];
+  const int size = (to - from) / num_threads;
+
+  int left = from;
+  int right = to - 1;
+  int i;
+  for (i = 0; i < num_threads; i++) {
+    args[i].array = array;
+    args[i].from = from + (i * size);
+    args[i].to = (i == num_threads - 1) ? to - 1 : from + ((i + 1) * size);
+    args[i].pivot = pivot;
+    args[i].left = &left;
+    args[i].right = &right;
+    pthread_create(&threads[i], &attr, par_partition_work, (void*)&args[i]);
+  }
+
+  for (i = 0; i < num_threads; i++) {
+    pthread_join(threads[i], NULL);
+  }
+
+  b[left] = pivot;
+
+  for (i = from; i < to; i++) {
+    array->data[i] = b[i];
+  }
+  return left;
+}
+
+void
 par_quicksort(struct array* array, int from, int to, int num_threads) {
+  //const int mid = par_partition(array, from, to, num_threads);
   const int mid = seq_partition(array, from, to);
 
   quicksort_args args[2];
@@ -157,11 +239,11 @@ void*
 quicksort(void* vargs) {
   const quicksort_args* args = (quicksort_args*)vargs;
 
-  if (args->from >= args->to) {
+  if (args->to - args->from <= 1) {
     return NULL;
-  }
-
-  if (args->threads <= 1) {
+  } else if (args->to - args->from <= 10) {
+    seq_selection_sort(args->array, args->from, args->to);
+  } else if (args->threads <= 1) {
     seq_quicksort(args->array, args->from, args->to);
   } else {
     par_quicksort(args->array, args->from, args->to, args->threads);
@@ -179,7 +261,9 @@ quicksort_start(struct array* array) {
   args.to = array->length;
   args.threads = NB_THREADS;
 
+  b = malloc(array->length * sizeof(int));
   quicksort((void*)&args);
+  free(b);
 
   return 0;
 }
