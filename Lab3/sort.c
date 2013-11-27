@@ -37,9 +37,11 @@
 #include "sort.h"
 #include "simple_quicksort.h"
 
+#define THRESHOLD 10
+
 pthread_attr_t attr;
 
-int* b;
+int* b[NB_THREADS];
 
 void
 array_swap(struct array* array, const int ai, const int bi) {
@@ -51,12 +53,12 @@ array_swap(struct array* array, const int ai, const int bi) {
 // Returns index of pivot (median of first, middle, last)
 int
 get_pivot_index(struct array* array, const int lower, const int upper) {
-  const int middle = (lower + upper) / 2;
-  //  return middle;
+  int middle = (lower + upper) / 2;
+  return middle;
   const int A = array->data[lower];
   const int B = array->data[middle];
   const int C = array->data[upper];
-  
+
   if (A <= B) {
     if (C < A) {
       return lower;
@@ -104,8 +106,8 @@ seq_partition(struct array* array, const int from, const int to) {
   int i;
   for (i = from; i < last; ++i) {
     if ( (i%2) ?
-	 array->data[i] < pivot :
-	 array->data[i] <= pivot) {
+	 array->data[i] <= pivot :
+	 array->data[i] < pivot) {
       array_swap(array, i, left++);
     }
   }
@@ -174,7 +176,21 @@ par_partition_work(void* vargs) {
       b[fetch_and_add(args->right, -1)] = cur;
     }
   }
+
+  for (i = args->from; i < args->to; i++) {
+    args->array->data[i] = b[i];
+  }
   return args->left;
+}
+
+void*
+par_memcpy(void* vargs) {
+  par_partition_args* args = (par_partition_args*)vargs;
+  int i;
+  for (i = args->from; i < args->to; i++) {
+    args->array->data[i] = b[i];
+  }
+  return NULL;
 }
 
 int
@@ -207,9 +223,14 @@ par_partition(struct array* array, int from, int to, int num_threads) {
 
   b[left] = pivot;
 
-  for (i = from; i < to; i++) {
-    array->data[i] = b[i];
+  for (i = 0; i < num_threads; i++) {
+    pthread_create(&threads[i], &attr, par_memcpy, (void*)&args[i]);
   }
+  for (i = 0; i < num_threads; i++) {
+    pthread_join(threads[i], NULL);
+  }
+  array->data[last] = b[last];
+
   return left;
 }
 
@@ -241,8 +262,8 @@ quicksort(void* vargs) {
 
   if (args->to - args->from <= 1) {
     return NULL;
-  } else if (args->to - args->from <= 10) {
-    seq_selection_sort(args->array, args->from, args->to);
+  } else if (args->to - args->from <= THRESHOLD) { 
+    seq_selection_sort(args->array, args->from, args->to); 
   } else if (args->threads <= 1) {
     seq_quicksort(args->array, args->from, args->to);
   } else {
@@ -250,6 +271,22 @@ quicksort(void* vargs) {
   }
   return NULL;
 }
+
+void*
+fast_sort(void* vargs) {
+  const quicksort_args* args = (quicksort_args*)vargs;
+  int pivots[NB_THREADS-1];
+  int i;
+  for (i = 0; i < NB_THREADS-1; i++) {
+    pivots[i] = args->array->data[i];
+  }
+
+  
+
+
+  return NULL;
+}
+
 
 int
 quicksort_start(struct array* array) {
@@ -261,10 +298,14 @@ quicksort_start(struct array* array) {
   args.to = array->length;
   args.threads = NB_THREADS;
 
-  b = malloc(array->length * sizeof(int));
-  quicksort((void*)&args);
-  free(b);
-
+  int i;
+  for (i = 0; i < NB_THREADS; i++) {
+    b[i] = malloc(array->length * sizeof(int));
+  } 
+ 
+  fast_sort((void*)&args);
+  //quicksort((void*)&args);
+  // free(b)
   return 0;
 }
 
