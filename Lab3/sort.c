@@ -128,7 +128,7 @@ seq_quicksort_start(void* vargs) {
 
 int
 fetch_and_add(int* variable, int value) {
-  asm volatile( 
+  asm volatile(
 	       "lock; xaddl %%eax, %2;"
 	       :"=a" (value)                   //Output
 	       : "a" (value), "m" (*variable)  //Input
@@ -159,7 +159,7 @@ int
 fast_sort_start(struct array* my_array) {
   pthread_attr_init(&attr);
   array = my_array;
-  
+
   const int length = array->length - (NB_THREADS - 1);
   const int size = length / NB_THREADS;
   int i;
@@ -167,8 +167,8 @@ fast_sort_start(struct array* my_array) {
     b[i] = malloc(array->length * sizeof(int));
     current_index[i] = 0;
     if (i != NB_THREADS-1)
-      swap(array->data, length+i, size*i);
-  } 
+      swap(array->data, length+i, size * (i + 1));
+  }
 
   for (i = 0; i < NB_THREADS-1; i++) {
     pivots[i] = array->data[array->length - 1 - i];
