@@ -3,14 +3,13 @@
 
 #include <stdio.h>
 
-#define GRID_SIZE 2
-#define BLOCK_SIZE 4
-#define N 16
+#define GRID_SIZE 64
+#define BLOCK_SIZE 16
+#define N 1024
 
 __global__
 void add_matrix(float *a, float *b, float *c)
 {
-  //int idx = blockIdx.x * blockDim.x + threadIdx.x * blockDim.x + threadIdx.y;
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int bx = blockIdx.x;
@@ -19,23 +18,23 @@ void add_matrix(float *a, float *b, float *c)
   int gsize = gridDim.x;
   int bsize = blockDim.x;
   int rowsize = gsize * bsize;
-  
-
   int idx = (rowsize * (by * bsize + ty)) + (bx * bsize + tx);
-
-  
+  //int idx = (rowsize * (bx * bsize + tx)) + (by * bsize + ty);
 
   c[idx] = a[idx] + b[idx];
 }
 
 int main()
 {
-  float a[N*N];
-  float b[N*N];
-  float c[N*N];
+  float *a = new float[N*N];
+  float *b = new float[N*N];
+  float *c = new float[N*N];
   float* ad;
   float* bd;
   float* cd;
+
+  cudaEvent_t beforeEvent;
+  cudaEvent_t afterEvent;
 
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < N; j++)	{
@@ -52,24 +51,33 @@ int main()
 
   dim3 dimBlock( BLOCK_SIZE, BLOCK_SIZE );
   dim3 dimGrid( GRID_SIZE, GRID_SIZE );
+
+  cudaEventCreate(&beforeEvent);
+  cudaEventCreate(&afterEvent);
+
   cudaMemcpy(ad, a, size, cudaMemcpyHostToDevice); 
   cudaMemcpy(bd, b, size, cudaMemcpyHostToDevice);
+  cudaEventRecord(beforeEvent, 0);
   add_matrix<<<dimGrid, dimBlock>>>(ad, bd, cd);
   cudaThreadSynchronize();
+
+  cudaEventRecord(afterEvent, 0);
+  cudaEventSynchronize(afterEvent);
   cudaMemcpy( c, cd, size, cudaMemcpyDeviceToHost ); 
+  float theTime;
+  cudaEventElapsedTime(&theTime, beforeEvent, afterEvent); 
   cudaFree( ad );
   cudaFree( bd );
   cudaFree( cd );
 
-  //  printf("%f\n", c[2]);
+  printf("Total time in ms: %f\n", theTime);
 
-  
-  for (int i = 0; i < N; i++)
+ for (int i = 0; i < N; i++)
     {
       for (int j = 0; j < N; j++)
-	{
-	  printf("%0.2f ", c[i+j*N]);
-	}
+  	{
+  	  printf("%0.2f ", c[i+j*N]);
+  	}
       printf("\n");
     }
   
