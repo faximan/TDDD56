@@ -7,8 +7,7 @@
 #include "array.h"
 #include "sort.h"
 
-#define THRESHOLD 10
-
+int threshold;
 pthread_attr_t attr;
 
 struct array* array;
@@ -22,7 +21,7 @@ typedef struct {
   int* array;
 } parallel_args;
 
-void swap(int* array, int ai, int bi) {
+inline void swap(int* array, int ai, int bi) {
   const int c = array[ai];
   array[ai] = array[bi];
   array[bi] = c;
@@ -43,10 +42,40 @@ void seq_selection_sort(int* array, const int from, const int to) {
   }
 }
 
+void seq_bubble_sort(int* array, const int from, const int to) {
+  int i;
+  int done;
+  do {
+    done = 1;
+    for (i = from + 1; i < to; i++) {
+      if (array[i] < array[i-1]) {
+	swap(array, i, i-1);
+	done = 0;
+      }
+    }
+  } while (!done);
+}
+
+inline int seq_find_pivot(int* array, const int from, const int to) {
+  const int mid = (from + to) / 2;
+
+  const int A = array[mid-1];
+  const int B = array[mid];
+  const int C = array[mid+1];
+  if (A > B) {
+    if (B > C) return mid;
+    if (A > C) return mid+1;
+    return mid-1;
+  }
+  if (A > C) return mid-1;
+  if (B > C) return mid+1;
+  return mid;
+}
+
 // In place partitions array and returns the position of the pivot.
 int seq_partition(int* array, const int from, const int to) {
   const int last = to - 1;  // Index of last element.
-  const int pivot_index = (from + to) / 2;
+  const int pivot_index = seq_find_pivot(array, from, last);
   const int pivot = array[pivot_index];
   swap(array, pivot_index, last);
 
@@ -65,8 +94,9 @@ int seq_partition(int* array, const int from, const int to) {
 }
 
 void seq_quicksort(int* array, const int from, const int to) {
-  if (to - from < THRESHOLD) {
+  if (to - from < threshold) {
     seq_selection_sort(array, from, to);
+    //seq_bubble_sort(array, from, to);
     return;
   }
 
@@ -87,7 +117,7 @@ void* seq_quicksort_start(void* vargs) {
 }
 
 // Thread-safe fetch and increment operation for shared variables.
-int fetch_and_add(int* variable, int value) {
+inline int fetch_and_add(int* variable, int value) {
   asm volatile(
 	       "lock; xaddl %%eax, %2;"
 	       :"=a" (value)
@@ -139,6 +169,7 @@ void find_pivots() {
 
 int sort(struct array *my_array)
 {
+  threshold = 12;
   pthread_attr_init(&attr);
   array = my_array;
 

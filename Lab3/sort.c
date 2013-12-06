@@ -1,33 +1,4 @@
-/*
- * sort.c
- *
- *  Created on: 5 Sep 2011
- *  Copyright 2011 Nicolas Melot
- *
- * This file is part of TDDD56.
- *
- *     TDDD56 is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General Public License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
- *
- *     TDDD56 is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
- *
- *     You should have received a copy of the GNU General Public License
- *     along with TDDD56. If not, see <http://www.gnu.org/licenses/>.
- *
- */
-
-// Do not touch or move these lines
 #include <stdio.h>
-#include "disable.h"
-
-#ifndef DEBUG
-#define NDEBUG
-#endif
 
 #include "pthread.h"
 #include <string.h>
@@ -35,10 +6,8 @@
 
 #include "array.h"
 #include "sort.h"
-#include "simple_quicksort.h"
 
-#define THRESHOLD 10
-
+int threshold;
 pthread_attr_t attr;
 
 struct array* array;
@@ -52,14 +21,13 @@ typedef struct {
   int* array;
 } parallel_args;
 
-void swap(int* array, int ai, int bi) {
+inline void swap(int* array, int ai, int bi) {
   const int c = array[ai];
   array[ai] = array[bi];
   array[bi] = c;
 }
 
-void
-seq_selection_sort(int* array, const int from, const int to) {
+void seq_selection_sort(int* array, const int from, const int to) {
   int i, j;
   for (i = from; i < to; i++) {
     int min_idx = i;
@@ -74,11 +42,40 @@ seq_selection_sort(int* array, const int from, const int to) {
   }
 }
 
+void seq_bubble_sort(int* array, const int from, const int to) {
+  int i;
+  int done;
+  do {
+    done = 1;
+    for (i = from + 1; i < to; i++) {
+      if (array[i] < array[i-1]) {
+	swap(array, i, i-1);
+	done = 0;
+      }
+    }
+  } while (!done);
+}
+
+inline int seq_find_pivot(int* array, const int from, const int to) {
+  const int mid = (from + to) / 2;
+
+  const int A = array[mid-1];
+  const int B = array[mid];
+  const int C = array[mid+1];
+  if (A > B) {
+    if (B > C) return mid;
+    if (A > C) return mid+1;
+    return mid-1;
+  }
+  if (A > C) return mid-1;
+  if (B > C) return mid+1;
+  return mid;
+}
+
 // In place partitions array and returns the position of the pivot.
-int
-seq_partition(int* array, const int from, const int to) {
+int seq_partition(int* array, const int from, const int to) {
   const int last = to - 1;  // Index of last element.
-  const int pivot_index = (from + to) / 2;
+  const int pivot_index = seq_find_pivot(array, from, last);
   const int pivot = array[pivot_index];
   swap(array, pivot_index, last);
 
@@ -96,10 +93,10 @@ seq_partition(int* array, const int from, const int to) {
   return left;
 }
 
-void
-seq_quicksort(int* array, const int from, const int to) {
-  if (to - from < THRESHOLD) {
+void seq_quicksort(int* array, const int from, const int to) {
+  if (to - from < threshold) {
     seq_selection_sort(array, from, to);
+    //seq_bubble_sort(array, from, to);
     return;
   }
 
@@ -108,8 +105,7 @@ seq_quicksort(int* array, const int from, const int to) {
   seq_quicksort(array, mid+1, to);
 }
 
-void*
-seq_quicksort_start(void* vargs) {
+void* seq_quicksort_start(void* vargs) {
   parallel_args* args = (parallel_args*)vargs;
   seq_quicksort(args->array, args->from, args->to);
 
@@ -121,19 +117,17 @@ seq_quicksort_start(void* vargs) {
 }
 
 // Thread-safe fetch and increment operation for shared variables.
-int
-fetch_and_add(int* variable, int value) {
+inline int fetch_and_add(int* variable, int value) {
   asm volatile(
 	       "lock; xaddl %%eax, %2;"
-	       :"=a" (value)                   //Output
-	       : "a" (value), "m" (*variable)  //Input
+	       :"=a" (value)
+	       : "a" (value), "m" (*variable)
 	       :"memory" );
   return value;
 }
 
 // Loops through the array to be sorted and puts every element in the right sub help array based on its relation to the pivots.
-void*
-fast_sort_partition(void* vargs) {
+void* fast_sort_partition(void* vargs) {
   parallel_args* args = (parallel_args*)vargs;
   int i;
   for (i = args->from; i < args->to; i++) {
@@ -152,8 +146,7 @@ fast_sort_partition(void* vargs) {
 }
 
 // Selects NBTHREADS-1 pivots from the input array in a good way, sorts them and puts them in the pivot array.
-void
-find_pivots() {
+void find_pivots() {
   const int num_pivots = NB_THREADS - 1;
   const int sample_size = num_pivots + (6 * (num_pivots + 1));
   
@@ -174,8 +167,9 @@ find_pivots() {
   }
 }
 
-int
-fast_sort_start(struct array* my_array) {
+int sort(struct array *my_array)
+{
+  threshold = 12;
   pthread_attr_init(&attr);
   array = my_array;
 
@@ -218,18 +212,6 @@ fast_sort_start(struct array* my_array) {
   for (i = 0; i < NB_THREADS; i++) {
     pthread_join(threads[i], NULL);
   }
-  return 0;
-}
-
-int
-sort(struct array * array)
-{
-#if NB_THREADS != 1
-  fast_sort_start(array);
-#else
-  seq_quicksort(array->data, 0, array->length);
-#endif
-  //simple_quicksort_ascending(array);
   return 0;
 }
 
