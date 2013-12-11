@@ -61,52 +61,39 @@ __global__ void filter(unsigned char *image, unsigned char *out, int n, int m)
     }
 
   // Corners.
-  if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x != 0 && blockIdx.y != 0) {
-    int a, b;
-    for (a = -2; a < 0; a++)
-      for (b = -2; b < 0; b++) {
-  	int block_offset = a * row_size + b;
-  	int image_offset = a * n + b;
-  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
-  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
-  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
-      }
+  if (threadIdx.x < 2 && threadIdx.y < 2 && blockIdx.x != 0 && blockIdx.y != 0) {
+    int block_offset = -2 * row_size - 2;
+    int image_offset = -2 * n - 2;
+    s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+    s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+    s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
   }
-  if (threadIdx.x == 0 && threadIdx.y == blockDim.y-1 && blockIdx.x != 0 && blockIdx.y != GRIDSIZE-1) {
-    int a, b;
-    for (a = 1; a <= 2; a++)
-      for (b = -2; b < 0; b++) {
-  	int block_offset = a * row_size + b;
-  	int image_offset = a * n + b;
-  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
-  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
-  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
-      }
+
+  if (threadIdx.x < 2 && threadIdx.y >= blockDim.y - 2 && blockIdx.x != 0 && blockIdx.y != GRIDSIZE-1) {
+    int block_offset = 2 * row_size - 2;
+    int image_offset = 2 * n - 2;
+    s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+    s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+    s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
   }
-  if (threadIdx.x == blockDim.x-1 && threadIdx.y == 0 && blockIdx.x != GRIDSIZE-1 && blockIdx.y != 0) {
-    int a, b;
-    for (a = -2; a < 0; a++)
-      for (b = 1; b <= 2; b++) {
-  	int block_offset = a * row_size + b;
-  	int image_offset = a * n + b;
-  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
-  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
-  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
-      }
+
+  if (threadIdx.x >= blockDim.x - 2 && threadIdx.y < 2 && blockIdx.x != GRIDSIZE-1 && blockIdx.y != 0) {
+    int block_offset = -2 * row_size + 2;
+    int image_offset = -2 * n + 2;
+    s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+    s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+    s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
   }
-  if (threadIdx.x == blockDim.x-1 && threadIdx.y == blockDim.y-1 &&
+
+  if (threadIdx.x >= blockDim.x - 2 && threadIdx.y >= blockDim.y - 2 &&
       blockIdx.x != GRIDSIZE-1 && blockIdx.y != GRIDSIZE-1) {
-    int a, b;
-    for (a = 1; a <= 2; a++)
-      for (b = 1; b <= 2; b++) {
-  	int block_offset = a * row_size + b;
-  	int image_offset = a * n + b;
-  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
-  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
-  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
-      }
+    int block_offset = 2 * row_size + 2;
+    int image_offset = 2 * n + 2;
+    s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+    s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+    s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
   }
-   
+  
   __syncthreads();
   if (j < n && i < m)
     {
