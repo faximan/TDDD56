@@ -13,32 +13,107 @@
 
 __global__ void filter(unsigned char *image, unsigned char *out, int n, int m)
 {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  int j = blockIdx.y * blockDim.y + threadIdx.y;
+  int j = blockIdx.x * blockDim.x + threadIdx.x;
+  int i = blockIdx.y * blockDim.y + threadIdx.y;
   int sumx, sumy, sumz, k, l;
 
-  int block_idx = threadIdx.y * blockDim.x + threadIdx.x;
-  
-  // printf is OK under --device-emulation
-  //	printf("%d %d %d %d\n", i, j, n, m);
+  int row_size = blockDim.x + 4;
+  int block_idx = (threadIdx.y + 2) * row_size + threadIdx.x + 2;
   
   __shared__ unsigned char s_image[3 * (BLOCKSIZE + 4) * (BLOCKSIZE + 4)];
-
-  if ()
 
   s_image[block_idx*3+0] = image[(i*n+j)*3+0];
   s_image[block_idx*3+1] = image[(i*n+j)*3+1];
   s_image[block_idx*3+2] = image[(i*n+j)*3+2];
 
-  __syncthreads();
+  // Extra, if current index is on block border, pull in extra pixels.
+  // Left.
+  if (threadIdx.x < 2 && blockIdx.x != 0)
+    {
+      int offset = 2;
+      s_image[ (block_idx - offset) * 3 + 0] = image[(i*n+j - offset) * 3 + 0];
+      s_image[ (block_idx - offset) * 3 + 1] = image[(i*n+j - offset) * 3 + 1];
+      s_image[ (block_idx - offset) * 3 + 2] = image[(i*n+j - offset) * 3 + 2];
+    }
+  // Right. 
+  if (threadIdx.x >= blockDim.x - 2 && blockIdx.x != GRIDSIZE-1)
+    {
+      int offset = 2;
+      s_image[ (block_idx + offset) * 3 + 0] = image[(i*n+j + offset) * 3 + 0];
+      s_image[ (block_idx + offset) * 3 + 1] = image[(i*n+j + offset) * 3 + 1];
+      s_image[ (block_idx + offset) * 3 + 2] = image[(i*n+j + offset) * 3 + 2];
+    }
+  // Up.
+  if (threadIdx.y < 2 && blockIdx.y != 0)
+    {
+      int offset = 2;
+      s_image[ (block_idx - offset*row_size) * 3 + 0] = image[(i*n+j - offset*n) * 3 + 0];
+      s_image[ (block_idx - offset*row_size) * 3 + 1] = image[(i*n+j - offset*n) * 3 + 1];
+      s_image[ (block_idx - offset*row_size) * 3 + 2] = image[(i*n+j - offset*n) * 3 + 2];
+    }
+  // Down.
+  if (threadIdx.y >= blockDim.y - 2 && blockIdx.y != GRIDSIZE-1)
+    {
+      int offset = 2;
+      s_image[ (block_idx + offset*row_size) * 3 + 0] = image[(i*n+j + offset*n) * 3 + 0];
+      s_image[ (block_idx + offset*row_size) * 3 + 1] = image[(i*n+j + offset*n) * 3 + 1];
+      s_image[ (block_idx + offset*row_size) * 3 + 2] = image[(i*n+j + offset*n) * 3 + 2];
+    }
 
+  // Corners.
+  if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x != 0 && blockIdx.y != 0) {
+    int a, b;
+    for (a = -2; a < 0; a++)
+      for (b = -2; b < 0; b++) {
+  	int block_offset = a * row_size + b;
+  	int image_offset = a * n + b;
+  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
+      }
+  }
+  if (threadIdx.x == 0 && threadIdx.y == blockDim.y-1 && blockIdx.x != 0 && blockIdx.y != GRIDSIZE-1) {
+    int a, b;
+    for (a = 1; a <= 2; a++)
+      for (b = -2; b < 0; b++) {
+  	int block_offset = a * row_size + b;
+  	int image_offset = a * n + b;
+  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
+      }
+  }
+  if (threadIdx.x == blockDim.x-1 && threadIdx.y == 0 && blockIdx.x != GRIDSIZE-1 && blockIdx.y != 0) {
+    int a, b;
+    for (a = -2; a < 0; a++)
+      for (b = 1; b <= 2; b++) {
+  	int block_offset = a * row_size + b;
+  	int image_offset = a * n + b;
+  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
+      }
+  }
+  if (threadIdx.x == blockDim.x-1 && threadIdx.y == blockDim.y-1 &&
+      blockIdx.x != GRIDSIZE-1 && blockIdx.y != GRIDSIZE-1) {
+    int a, b;
+    for (a = 1; a <= 2; a++)
+      for (b = 1; b <= 2; b++) {
+  	int block_offset = a * row_size + b;
+  	int image_offset = a * n + b;
+  	s_image[ (block_idx + block_offset) * 3 + 0 ] = image[(i*n+j + image_offset) * 3 + 0];
+  	s_image[ (block_idx + block_offset) * 3 + 1 ] = image[(i*n+j + image_offset) * 3 + 1];
+  	s_image[ (block_idx + block_offset) * 3 + 2 ] = image[(i*n+j + image_offset) * 3 + 2];
+      }
+  }
+   
+  __syncthreads();
   if (j < n && i < m)
     {
       out[(i*n+j)*3+0] = s_image[block_idx*3+0];
       out[(i*n+j)*3+1] = s_image[block_idx*3+1];
       out[(i*n+j)*3+2] = s_image[block_idx*3+2];
     }
-  
   if (i > 1 && i < m-2 && j > 1 && j < n-2)
     {
       // Filter kernel
@@ -46,18 +121,10 @@ __global__ void filter(unsigned char *image, unsigned char *out, int n, int m)
       for(k=-2;k<3;k++)
 	for(l=-2;l<3;l++)
 	  {
-	    int index;
-	    if (threadIdx.x < 2 || threadIdx.y < 2 || threadIdx.x >= blockDim.x - 2 || threadIdx.y >= blockDim.y - 2) {
-	      index = ((i+k)*n+(j+l))*3;
-	      sumx += image[index+0];
-	      sumy += image[index+1];
-	      sumz += image[index+2];
-	    } else {
-	      index = ((threadIdx.y+k)*blockDim.x+(threadIdx.x+l))*3;
-	      sumx += s_image[index+0];
-	      sumy += s_image[index+1];
-	      sumz += s_image[index+2];
-	    }
+	    int index = ((threadIdx.y + 2 + k) * row_size + (threadIdx.x + 2 + l))*3;
+	    sumx += s_image[index+0];
+	    sumy += s_image[index+1];
+	    sumz += s_image[index+2];
 	  }
       out[(i*n+j)*3+0] = sumx/25;
       out[(i*n+j)*3+1] = sumy/25;
