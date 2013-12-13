@@ -18,8 +18,9 @@
 
 
 // Size of data!
-#define dataWidth 512
-#define dataHeight 512
+#define dataSize 64
+#define dataWidth dataSize
+#define dataHeight dataSize
 
 
 // global variables
