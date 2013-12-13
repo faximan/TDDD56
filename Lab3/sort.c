@@ -1,4 +1,9 @@
 #include <stdio.h>
+#include "disable.h"
+
+#ifndef DEBUG
+#define NDEBUG
+#endif
 
 #include "pthread.h"
 #include <string.h>
