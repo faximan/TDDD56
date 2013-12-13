@@ -7,19 +7,19 @@
 #include <string.h>
 #include <sys/time.h>
 #ifdef __APPLE__
-  #include <OpenCL/opencl.h>
-  #include <GLUT/glut.h>
-  #include <OpenGL/gl.h>
+#include <OpenCL/opencl.h>
+#include <GLUT/glut.h>
+#include <OpenGL/gl.h>
 #else
-  #include <CL/cl.h>
-  #include <GL/glut.h>
+#include <CL/cl.h>
+#include <GL/glut.h>
 #endif
 #include "CLutilities.h"
 
 
 // Size of data!
-#define dataWidth 32
-#define dataHeight 32
+#define dataWidth 512
+#define dataHeight 512
 
 
 // global variables
@@ -40,10 +40,10 @@ unsigned int *generateRandomField(unsigned int seed, unsigned int length)
   field = (unsigned int *)malloc(length*4);
 
   if (!field)
-  {
-    printf("\nerror allocating data.\n\n");
-    return NULL;
-  }
+    {
+      printf("\nerror allocating data.\n\n");
+      return NULL;
+    }
 
   srandom(seed);
 
@@ -51,16 +51,16 @@ unsigned int *generateRandomField(unsigned int seed, unsigned int length)
     initd[i]=0;
 
   for (i=0; i<length; i++)
-  {
-    rnd = (unsigned int)(random()%(length));
-    while(initd[rnd]!=0)
     {
-      if (rnd<(length-1)) rnd++;
-      else rnd=0;
-    }
-    field[rnd]=i*256;
-    initd[rnd]=1;
-  } 
+      rnd = (unsigned int)(random()%(length));
+      while(initd[rnd]!=0)
+	{
+	  if (rnd<(length-1)) rnd++;
+	  else rnd=0;
+	}
+      field[rnd]=i*256;
+      initd[rnd]=1;
+    } 
   return field;
 }
 
@@ -75,15 +75,15 @@ void cpu_Sort(unsigned int *data, unsigned int length)
   
   /* sort by count */
   for (i = 0; i < length; i++) // For all elements
-  {
-    pos = 0;
-    for (j = 0; j < length; j++) // For all other elements
     {
-      if (indata[i] > indata[j])
-        pos += 1;
+      pos = 0;
+      for (j = 0; j < length; j++) // For all other elements
+	{
+	  if (indata[i] > indata[j])
+	    pos += 1;
+	}
+      data[pos] = indata[i];
     }
-    data[pos] = indata[i];
-  }
   free(indata);
 }
 
@@ -120,20 +120,20 @@ int init_OpenCL()
   
   // create the program
   cpSort = clCreateProgramWithSource(cxGPUContext, 1, (const char **)&source, 
-                                                    &kernelLength, &ciErrNum);
+				     &kernelLength, &ciErrNum);
   printCLError(ciErrNum,5);
     
   // build the program
   ciErrNum = clBuildProgram(cpSort, 0, NULL, NULL, NULL, NULL);
   if (ciErrNum != CL_SUCCESS)
-  {
-    // write out the build log, then exit
-    char cBuildLog[10240];
-    clGetProgramBuildInfo(cpSort, device, CL_PROGRAM_BUILD_LOG, 
-                          sizeof(cBuildLog), cBuildLog, NULL );
-    printf("\nBuild Log:\n%s\n\n", (char *)&cBuildLog);
-    return -1;
-  }
+    {
+      // write out the build log, then exit
+      char cBuildLog[10240];
+      clGetProgramBuildInfo(cpSort, device, CL_PROGRAM_BUILD_LOG, 
+			    sizeof(cBuildLog), cBuildLog, NULL );
+      printf("\nBuild Log:\n%s\n\n", (char *)&cBuildLog);
+      return -1;
+    }
   
   gpgpuSort = clCreateKernel(cpSort, "sort", &ciErrNum);
   printCLError(ciErrNum,6);
@@ -148,37 +148,41 @@ int gpu_Sort(unsigned int *data, unsigned int length)
 {
   cl_int ciErrNum = CL_SUCCESS;
   size_t localWorkSize, globalWorkSize;
-  cl_mem io_data;
+  cl_mem in_data, out_data;
   printf("GPU sorting.\n");
-  
-  io_data = clCreateBuffer(cxGPUContext, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, length * sizeof(unsigned int), data, &ciErrNum);
-    printCLError(ciErrNum,7);
 
-    if (length<512) localWorkSize  = length;
-    else            localWorkSize  = 512;
-    globalWorkSize = length;
+ in_data = clCreateBuffer(cxGPUContext, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, length * sizeof(unsigned int), data, &ciErrNum);
+  out_data = clCreateBuffer(cxGPUContext, CL_MEM_READ_WRITE, length * sizeof(unsigned int), NULL, &ciErrNum);
 
-    // set the args values
-    ciErrNum  = clSetKernelArg(gpgpuSort, 0, sizeof(cl_mem),  (void *) &io_data);
-    ciErrNum |= clSetKernelArg(gpgpuSort, 1, sizeof(cl_uint), (void *) &length);
-    printCLError(ciErrNum,8);
+  printCLError(ciErrNum,7);
 
-    gettimeofday(&t_s_gpu, NULL);
+  if (length<512) localWorkSize  = length;
+  else            localWorkSize  = 512;
+  globalWorkSize = length;
+
+  // set the args values
+  ciErrNum  = clSetKernelArg(gpgpuSort, 0, sizeof(cl_mem),  (void *) &in_data);
+  ciErrNum |= clSetKernelArg(gpgpuSort, 1, sizeof(cl_mem),  (void *) &out_data);
+  ciErrNum |= clSetKernelArg(gpgpuSort, 2, sizeof(cl_uint), (void *) &length);
+  printCLError(ciErrNum,8);
+
+  gettimeofday(&t_s_gpu, NULL);
     
-    cl_event event;
-    ciErrNum = clEnqueueNDRangeKernel(commandQueue, gpgpuSort, 1, NULL, &globalWorkSize, &localWorkSize, 0, NULL, &event);
-    printCLError(ciErrNum,9);
+  cl_event event;
+  ciErrNum = clEnqueueNDRangeKernel(commandQueue, gpgpuSort, 1, NULL, &globalWorkSize, &localWorkSize, 0, NULL, &event);
+  printCLError(ciErrNum,9);
     
-    clWaitForEvents(1, &event); // Synch
-    gettimeofday(&t_e_gpu, NULL);
-    printCLError(ciErrNum,10);
+  clWaitForEvents(1, &event); // Synch
+  gettimeofday(&t_e_gpu, NULL);
+  printCLError(ciErrNum,10);
 
-  ciErrNum = clEnqueueReadBuffer(commandQueue, io_data, CL_TRUE, 0, length * sizeof(unsigned int), data, 0, NULL, &event);
-    printCLError(ciErrNum,11);
-    clWaitForEvents(1, &event); // Synch
+  ciErrNum = clEnqueueReadBuffer(commandQueue, out_data, CL_TRUE, 0, length * sizeof(unsigned int), data, 0, NULL, &event);
+  printCLError(ciErrNum,11);
+  clWaitForEvents(1, &event); // Synch
   printCLError(ciErrNum,10);
     
-  clReleaseMemObject(io_data);
+  clReleaseMemObject(in_data);
+  clReleaseMemObject(out_data);
   return ciErrNum;
 }
 
@@ -196,6 +200,14 @@ unsigned int *data_cpu, *data_gpu;
 
 GLuint texNum, texNum2;
 
+int ascending(const void* a, const void* b)
+{
+        int aa = *(unsigned int*) a;
+        int bb = *(unsigned int*) b;
+
+        return aa > bb;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // main computation function
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,19 +224,19 @@ void computeImages()
   printf("\nseed: %u\n",seed);
 
   if (init_OpenCL()<0)
-  {
-    close_OpenCL();
-    return;
-  }
+    {
+      close_OpenCL();
+      return;
+    }
 
   data_cpu = generateRandomField(seed,length);
   data_gpu = (unsigned int *)malloc (length*sizeof(unsigned int));
 
   if ((!data_cpu)||(!data_gpu))
-  {
-    printf("\nError allocating data.\n\n");
-    return;
-  }
+    {
+      printf("\nError allocating data.\n\n");
+      return;
+    }
   
   for(i=0;i<length;i++)
     data_gpu[i]=data_cpu[i];
@@ -237,9 +249,9 @@ void computeImages()
   gpu_Sort(data_gpu,length);
   gettimeofday(&t_e_gpu, NULL);
 
-// For small data sets you may print out errors here.
-//  for(i=0;i<length;i++)
-//    if(data_gpu[i]!=data_cpu[i]) printf("error @ %u\n",i);
+  // For small data sets you may print out errors here.
+  //  for(i=0;i<length;i++)
+  //    if(data_gpu[i]!=data_cpu[i]) printf("error @ %u\n",i);
 
   printf("\n time needed: \nCPU: %i us\n",(int)(t_e_cpu.tv_usec-t_s_cpu.tv_usec + (t_e_cpu.tv_sec-t_s_cpu.tv_sec)*1000000));
   printf("\nGPU: %i us\n\n",(int)(t_e_gpu.tv_usec-t_s_gpu.tv_usec + (t_e_gpu.tv_sec-t_s_gpu.tv_sec)*1000000));
@@ -256,65 +268,65 @@ void computeImages()
 // Display images side by side
 void Draw()
 {
-	int m = dataWidth;
-	int n = dataHeight;
+  int m = dataWidth;
+  int n = dataHeight;
 	
-// Dump the whole picture onto the screen.	
-	glClearColor( 0.0, 0.0, 0.0, 1.0 );
-	glClear( GL_COLOR_BUFFER_BIT );
+  // Dump the whole picture onto the screen.	
+  glClearColor( 0.0, 0.0, 0.0, 1.0 );
+  glClear( GL_COLOR_BUFFER_BIT );
 
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, m, n, 0,
-             GL_RGBA, GL_UNSIGNED_BYTE, data_cpu);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glEnable(GL_TEXTURE_2D);
+  glTexImage2D(GL_TEXTURE_2D, 0, 4, m, n, 0,
+	       GL_RGBA, GL_UNSIGNED_BYTE, data_cpu);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glEnable(GL_TEXTURE_2D);
 
-    // Draw polygon
-    glBegin(GL_POLYGON);
-    glColor3f(1, 1, 1);
-    glTexCoord2f(0.0, 0.0);
-    glVertex3f(-1.0, 1.0, 0.0);
-    glTexCoord2f(0.0, 1.0);
-    glVertex3f(-1.0,-1.0, 0.0);
-    glTexCoord2f(1.0, 1.0);
-    glVertex3f( 0.0,-1.0, 0.0);
-    glTexCoord2f(1.0, 0.0);
-    glVertex3f( 0.0, 1.0, 0.0);
-    glEnd();
+  // Draw polygon
+  glBegin(GL_POLYGON);
+  glColor3f(1, 1, 1);
+  glTexCoord2f(0.0, 0.0);
+  glVertex3f(-1.0, 1.0, 0.0);
+  glTexCoord2f(0.0, 1.0);
+  glVertex3f(-1.0,-1.0, 0.0);
+  glTexCoord2f(1.0, 1.0);
+  glVertex3f( 0.0,-1.0, 0.0);
+  glTexCoord2f(1.0, 0.0);
+  glVertex3f( 0.0, 1.0, 0.0);
+  glEnd();
 
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, m, n, 0,
-             GL_RGBA, GL_UNSIGNED_BYTE, data_gpu);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glEnable(GL_TEXTURE_2D);
+  glTexImage2D(GL_TEXTURE_2D, 0, 4, m, n, 0,
+	       GL_RGBA, GL_UNSIGNED_BYTE, data_gpu);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glEnable(GL_TEXTURE_2D);
 
-    // Draw polygon
-    glBegin(GL_POLYGON);
-    glColor3f(1, 1, 1);
-    glTexCoord2f(0.0, 0.0);
-    glVertex3f(0.0, 1.0, 0.0);
-    glTexCoord2f(0.0, 1.0);
-    glVertex3f(0.0,-1.0, 0.0);
-    glTexCoord2f(1.0, 1.0);
-    glVertex3f( 1.0,-1.0, 0.0);
-    glTexCoord2f(1.0, 0.0);
-    glVertex3f( 1.0, 1.0, 0.0);
-    glEnd();
+  // Draw polygon
+  glBegin(GL_POLYGON);
+  glColor3f(1, 1, 1);
+  glTexCoord2f(0.0, 0.0);
+  glVertex3f(0.0, 1.0, 0.0);
+  glTexCoord2f(0.0, 1.0);
+  glVertex3f(0.0,-1.0, 0.0);
+  glTexCoord2f(1.0, 1.0);
+  glVertex3f( 1.0,-1.0, 0.0);
+  glTexCoord2f(1.0, 0.0);
+  glVertex3f( 1.0, 1.0, 0.0);
+  glEnd();
     
-    glFlush();
+  glFlush();
 }
 
 // Main program, inits
 int main( int argc, char** argv) 
 {
 	
-	glutInit(&argc, argv);
-	glutInitDisplayMode( GLUT_SINGLE | GLUT_RGBA );
-	glutInitWindowSize( 1024, 512 );
-	glutCreateWindow("OpenCL output on GL");
-	glutDisplayFunc(Draw);
+  glutInit(&argc, argv);
+  glutInitDisplayMode( GLUT_SINGLE | GLUT_RGBA );
+  glutInitWindowSize( 1024, 512 );
+  glutCreateWindow("OpenCL output on GL");
+  glutDisplayFunc(Draw);
 	
-	computeImages();
+  computeImages();
 	
-	glutMainLoop();
+  glutMainLoop();
 }

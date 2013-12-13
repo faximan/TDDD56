@@ -3,17 +3,16 @@
  * This kernel has a bug. What?
  */
 
-__kernel void sort(__global unsigned int *data, const unsigned int length)
+__kernel void sort(__constant unsigned int *in_data, __global unsigned int *out_data, const unsigned int length)
 { 
   unsigned int pos = 0;
   unsigned int i;
-  unsigned int val;
+  unsigned int val = in_data[get_global_id(0)];
 
   //find out how many values are smaller
-  for (i = 0; i < get_global_size(0); i++)
-    if (data[get_global_id(0)] > data[i])
+  for (i = 0; i < length; i++)
+    if (val > in_data[i])
       pos++;
 
-  val = data[get_global_id(0)];
-  data[pos]=val;
+  out_data[pos]=val;
 }
