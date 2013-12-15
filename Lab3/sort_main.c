@@ -73,21 +73,11 @@ main(int argc, char** argv)
 	check->length = array->length;
 
 #if MEASURE == 1
-	/* struct array *input[4];  // Take average of 5. */
-	/* for (i = 0; i < 5; i++) { */
-	/*   input[i] = array_alloc(array->capacity); */
-	/*   memcpy(input[i]->data, array->data, sizeof(value) * array->length); */
-	/*   input[i]->length = array->length; */
-	/* } */
 	clock_gettime(CLOCK_MONOTONIC, &start);
 #endif
 	sort(array);
 #if MEASURE == 1
-	/* for (i = 0; i < 4; i++) { */
-	/*   sort(input[i]); */
-	/* } */
 	clock_gettime(CLOCK_MONOTONIC, &stop);
-	//	printf("Time: %ld\n", (stop.tv_sec * (long int)1e9 + stop.tv_nsec - (start.tv_sec * (long int)1e9 + start.tv_nsec))/(long int)1e6/5);
 #endif
 
 	qsort(check->data, check->length, sizeof(value), ascending);
