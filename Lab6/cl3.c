@@ -31,15 +31,46 @@ static size_t noWG;
 // Timing globals
 struct timeval t_s_cpu, t_e_cpu,t_s_gpu, t_e_gpu;
 
+void readPixel(unsigned char *image, unsigned int r, unsigned int c, unsigned char *pixel) {
+  unsigned int i;
+  for (i = 0; i < 3; i++) {
+    pixel[i] = image[(r * dataWidth + c) * 3 + i];
+  }
+}
 
 // Process image on CPU
 void cpu_WL(unsigned char *image, unsigned char *data, unsigned int length)
 {
-  unsigned int i;
-  
-  for (i = 0; i < length; i++) // For all elements
-  {
-    data[i] = 255 - image[i];
+  unsigned int r, c;
+  unsigned char in1[3], in2[3], in3[3], in4[3];
+  unsigned char out1[3], out2[3], out3[3], out4[3];
+  for (r = 0; r < dataHeight; r += 2) {
+    for (c = 0; c < dataWidth; c += 2) {
+      readPixel(image, r, c, in1);
+      readPixel(image, r, c+1, in2);
+      readPixel(image, r+1, c, in3);
+      readPixel(image, r+1, c+1, in4);
+
+      unsigned int i;
+      for (i = 0; i < 3; i++) {
+	out1[i] = (in1[i] + in2[i] + in3[i] + in4[i]) / 4;
+	out2[i] = (in1[i] + in2[i] - in3[i] - in4[i]) / 4 + 128;
+	out3[i] = (in1[i] - in2[i] + in3[i] - in4[i]) / 4 + 128;
+	out4[i] = (in1[i] - in2[i] - in3[i] + in4[i]) / 4 + 128;
+      }
+
+      const int idx1 = 3 * ((r / 2) * dataWidth + (c / 2));
+      const int idx2 = 3 * ((r / 2) * dataWidth + (c / 2) + (dataWidth / 2));
+      const int idx3 = 3 * (((r / 2) + (dataHeight / 2)) * dataWidth + (c / 2));
+      const int idx4 = 3 * (((r / 2) + (dataHeight / 2)) * dataWidth + (c / 2) + (dataWidth / 2));
+      
+      for (i = 0; i < 3; i++) {
+	data[idx1 + i] = out1[i];
+	data[idx2 + i] = out2[i];
+	data[idx3 + i] = out3[i];
+	data[idx4 + i] = out4[i];
+      }
+    }
   }
 }
 
@@ -114,7 +145,7 @@ int gpu_WL(unsigned char *image, unsigned char *data, unsigned int length)
 
     if (length<512) localWorkSize  = length;
     else            localWorkSize  = 512;
-    globalWorkSize = length;
+    globalWorkSize = length / 4;
 
     // set the args values
     ciErrNum  = clSetKernelArg(myKernel, 0, sizeof(cl_mem),  (void *) &in_data);

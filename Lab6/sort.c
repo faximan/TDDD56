@@ -18,7 +18,7 @@
 
 
 // Size of data!
-#define dataSize 64
+#define dataSize 128
 #define dataWidth dataSize
 #define dataHeight dataSize
 

@@ -3,7 +3,9 @@
 
 #define NUM_SHARED_ELEMENTS 512
 
-__kernel void sort(__constant unsigned int *in_data, __global unsigned int *out_data, const unsigned int length)
+__kernel void sort(__constant unsigned int *in_data,
+		   __global unsigned int *out_data,
+		   const unsigned int length)
 { 
   unsigned int pos = 0;
   unsigned int val = in_data[ get_global_id(0) ];
